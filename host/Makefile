@@ -32,6 +32,7 @@
 
 include ../mk/toolchain.mk
 
+BOARDS      = rpi3 rpi4 rpi5
 RAPI_BOARD ?= rpi5
 
 ROOT = ..
@@ -39,8 +40,6 @@ ROOT = ..
 # editing this file. The default is this repository's own submodule, which
 # is what a plain clone gets.
 SHIM ?= $(ROOT)/circle-libsdl2
-
-include $(SHIM)/circle-stdlib-$(RAPI_BOARD)/Config.mk
 
 DVL     = $(ROOT)/devilutionX
 DEPSDIR = $(ROOT)/deps
@@ -54,9 +53,23 @@ IMAGE_rpi3 = kernel8
 IMAGE_rpi4 = kernel8-rpi4
 IMAGE_rpi5 = kernel_2712
 IMAGE = $(IMAGE_$(RAPI_BOARD))
-ifeq ($(IMAGE),)
-$(error unknown RAPI_BOARD '$(RAPI_BOARD)' — expected rpi3, rpi4 or rpi5)
+
+# Before the world is included, so an unknown board is named as an unknown
+# board. After the include it arrives as a missing Config.mk under a directory
+# whose name nobody recognises.
+ifeq ($(filter $(RAPI_BOARD),$(BOARDS)),)
+$(error unknown RAPI_BOARD '$(RAPI_BOARD)' — expected one of: $(BOARDS))
 endif
+
+# The board's circle-stdlib world. A `make deps` that has not been run, or has
+# not finished, leaves this file absent; make would then report that it has no
+# rule to make a Config.mk, which describes the symptom and not the cause.
+WORLD = $(SHIM)/circle-stdlib-$(RAPI_BOARD)
+ifeq ($(wildcard $(WORLD)/Config.mk),)
+$(error the $(RAPI_BOARD) circle-stdlib world is not configured ($(WORLD)/Config.mk is missing) — run 'make deps-$(RAPI_BOARD)' at the repository root)
+endif
+
+include $(WORLD)/Config.mk
 
 TARGET = $(OBJDIR)/$(IMAGE)
 
@@ -218,6 +231,25 @@ STANDARD = -std=gnu++23
 # reconstruction.
 OPTIMIZE = -O2
 
+# Dependency files are written as a side effect of compiling rather than by
+# rules of their own, and Circle's Rules.mk is told to keep its hands off
+# (CHECK_DEPS) so its `-M -MG` .d rules are not defined for these objects.
+#
+# -MG lists a header make has no rule for as a prerequisite of the object,
+# which stops the build; GNU make 3.81 stops with exit 2 and prints not one
+# line saying why, which is why this build asks for 4.0 in mk/toolchain.mk. A
+# .d left over from an earlier build naming a header that has since moved or
+# been deleted stops it the same way, and is why "delete the board's object
+# directory" kept being the cure.
+#
+# -MD writes the dependency file alongside the object it belongs to, so the
+# two can never disagree about the flags that produced them, and -MP adds a
+# rule with no recipe for every header named, so a header that disappears
+# means a rebuild instead of a dead stop.
+DEPS       = $(OBJS:.o=.d)
+CHECK_DEPS = 0
+DEPFLAGS   = -MD -MP
+
 include $(CIRCLEHOME)/Rules.mk
 
 # The world must be the multicore one circle-libsdl2 configures: the shim's
@@ -319,12 +351,12 @@ DVL_CXXFLAGS = $(DVL_DEFINE) -include new $(CPPFLAGS)
 # rather than added to CFLAGS because Rules.mk folds CFLAGS into the C++
 # flags as well, and a C standard handed to the C++ compiler is a warning on
 # every C++ file in the build.
-DEP_CFLAGS = -std=gnu99 $(CFLAGS)
+DEP_CFLAGS = -std=gnu99 $(RAPI_CFLAGS) $(CFLAGS)
 
 # libmpq's own config.h lives in the game's tree, not in libmpq's: upstream
 # supplies it from 3rdParty/libmpq/ and puts that directory first on the
 # include path for libmpq's sources alone.
-MPQ_CFLAGS = -I $(DVL)/3rdParty/libmpq -I $(DEPSDIR)/zlib -I $(DEPSDIR)/bzip2 \
+MPQ_CFLAGS = -std=gnu99 $(RAPI_CFLAGS) -I $(DVL)/3rdParty/libmpq -I $(DEPSDIR)/zlib -I $(DEPSDIR)/bzip2 \
 	$(DEP_CFLAGS)
 
 # The shim comes in whole, every member, rather than only the members the
@@ -334,8 +366,20 @@ MPQ_CFLAGS = -I $(DVL)/3rdParty/libmpq -I $(DEPSDIR)/zlib -I $(DEPSDIR)/bzip2 \
 # would quietly win — the game would keep calling the stub and nothing would
 # say so. Pulling the archive in whole turns that into a duplicate-symbol
 # error at link time, which is the only moment it can still be cheap to fix.
-LIBS = --whole-archive $(SHIM)/libSDL2-$(RAPI_BOARD).a --no-whole-archive \
+SHIM_LIB = $(SHIM)/libSDL2-$(RAPI_BOARD).a
+
+LIBS = --whole-archive $(SHIM_LIB) --no-whole-archive \
 	$(CIRCLE_STDLIB_LIBS)
+
+# The shim archive is built in circle-libsdl2 and never here — it is a shared
+# dependency, and a rule here would rebuild it at whatever board and crossing
+# count this makefile happens to be running with. This rule exists only for the
+# case where it is absent: it runs then, and only then, because a target with a
+# recipe and no prerequisites is up to date as soon as the file exists.
+$(SHIM_LIB):
+	@echo "$@ is missing: the $(RAPI_BOARD) shim archive has not been built."
+	@echo "Run: $(MAKE) -C $(SHIM) libSDL2-$(RAPI_BOARD).a BOARD=$(RAPI_BOARD)"
+	@exit 1
 
 # ---------------------------------------------------------------------------
 # Filesystem syscalls, redirected at link time
@@ -392,30 +436,19 @@ LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL))
 # over Rules.mk's in-place %.o/%.d, so nothing is written beside the source.
 $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 	@echo "  CPP   $@"
-	@$(CPP) $(CPPFLAGS) -c -o $@ $<
-
-$(OBJDIR)/%.d: %.cpp | $(OBJDIR)
-	@$(CPP) $(CPPFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CPP) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 # DevilutionX's objects, mirroring its source tree under $(OBJDIR)/dvl/.
 # The source tree itself is the upstream submodule, and is never written to.
 $(OBJDIR)/dvl/%.o: $(DVL)/%.cpp
 	@mkdir -p $(dir $@)
 	@echo "  CPP   $@"
-	@$(CPP) $(DVL_CXXFLAGS) -c -o $@ $<
-
-$(OBJDIR)/dvl/%.d: $(DVL)/%.cpp
-	@mkdir -p $(dir $@)
-	@$(CPP) $(DVL_CXXFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CPP) $(DVL_CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJDIR)/dvl/%.o: $(DVL)/%.c
 	@mkdir -p $(dir $@)
 	@echo "  CC    $@"
-	@$(CC) $(DEP_CFLAGS) -c -o $@ $<
-
-$(OBJDIR)/dvl/%.d: $(DVL)/%.c
-	@mkdir -p $(dir $@)
-	@$(CC) $(DEP_CFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CC) $(DEP_CFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 # DevilutionX's main() is the program's entry point on a desktop, but here
 # main() belongs to the Circle kernel (main.cpp in this directory), which
@@ -425,57 +458,33 @@ $(OBJDIR)/dvl/%.d: $(DVL)/%.c
 $(OBJDIR)/dvl/Source/main.o: $(DVL)/Source/main.cpp
 	@mkdir -p $(dir $@)
 	@echo "  CPP   $@ (entry point renamed)"
-	@$(CPP) $(DVL_CXXFLAGS) -Dmain=devilutionx_main -c -o $@ $<
-
-$(OBJDIR)/dvl/Source/main.d: $(DVL)/Source/main.cpp
-	@mkdir -p $(dir $@)
-	@$(CPP) $(DVL_CXXFLAGS) -Dmain=devilutionx_main -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CPP) $(DVL_CXXFLAGS) $(DEPFLAGS) -Dmain=devilutionx_main -c -o $@ $<
 
 # The third-party dependencies, each mirrored under $(OBJDIR)/deps/<name>/.
 $(OBJDIR)/deps/fmt/%.o: $(DEPSDIR)/fmt/%.cc
 	@mkdir -p $(dir $@)
 	@echo "  CPP   $@"
-	@$(CPP) $(DVL_CXXFLAGS) -c -o $@ $<
-
-$(OBJDIR)/deps/fmt/%.d: $(DEPSDIR)/fmt/%.cc
-	@mkdir -p $(dir $@)
-	@$(CPP) $(DVL_CXXFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CPP) $(DVL_CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJDIR)/deps/libsmackerdec/%.o: $(DEPSDIR)/libsmackerdec/%.cpp
 	@mkdir -p $(dir $@)
 	@echo "  CPP   $@"
-	@$(CPP) $(DVL_CXXFLAGS) -c -o $@ $<
-
-$(OBJDIR)/deps/libsmackerdec/%.d: $(DEPSDIR)/libsmackerdec/%.cpp
-	@mkdir -p $(dir $@)
-	@$(CPP) $(DVL_CXXFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CPP) $(DVL_CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJDIR)/deps/libmpq/%.o: $(DEPSDIR)/libmpq/%.c
 	@mkdir -p $(dir $@)
 	@echo "  CC    $@"
-	@$(CC) $(MPQ_CFLAGS) -c -o $@ $<
-
-$(OBJDIR)/deps/libmpq/%.d: $(DEPSDIR)/libmpq/%.c
-	@mkdir -p $(dir $@)
-	@$(CC) $(MPQ_CFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CC) $(MPQ_CFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJDIR)/deps/zlib/%.o: $(DEPSDIR)/zlib/%.c
 	@mkdir -p $(dir $@)
 	@echo "  CC    $@"
-	@$(CC) $(DEP_CFLAGS) -c -o $@ $<
-
-$(OBJDIR)/deps/zlib/%.d: $(DEPSDIR)/zlib/%.c
-	@mkdir -p $(dir $@)
-	@$(CC) $(DEP_CFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CC) $(DEP_CFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJDIR)/deps/bzip2/%.o: $(DEPSDIR)/bzip2/%.c
 	@mkdir -p $(dir $@)
 	@echo "  CC    $@"
-	@$(CC) $(DEP_CFLAGS) -c -o $@ $<
-
-$(OBJDIR)/deps/bzip2/%.d: $(DEPSDIR)/bzip2/%.c
-	@mkdir -p $(dir $@)
-	@$(CC) $(DEP_CFLAGS) -M -MG -MT $(@:.d=.o) -MT $@ -MF $@ $<
+	@$(CC) $(DEP_CFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
@@ -512,3 +521,14 @@ image: $(TARGET).img
 .PHONY: clean-board
 clean-board:
 	rm -rf $(OBJDIR)
+
+# This board from nothing. An incremental build is a decision made from
+# timestamps, and a timestamp says when a file was written rather than what is
+# in it; anything read off the resulting image describes what the last build
+# happened to put there. Take a measurement that has to be right off one of
+# these.
+.PHONY: rebuild
+rebuild:
+	+@$(NOT_DRY_RUN)
+	@$(MAKE) clean-board RAPI_BOARD=$(RAPI_BOARD)
+	@$(MAKE) image RAPI_BOARD=$(RAPI_BOARD)
