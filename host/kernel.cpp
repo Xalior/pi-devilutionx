@@ -17,10 +17,10 @@
 //
 //   --data-dir, --save-dir and --config-dir are upstream's own switches for
 //   exactly this, and they are baked into the argument list below;
-//   SDL_GetBasePath answers with it, which is what the game's assets path is
-//   derived from (see circle_stubs.cpp);
-//   SDL_GetPrefPath answers with it too, which is where the settings file
-//   and the save games would otherwise go;
+//   SDL_GetBasePath answers with it, once this kernel has told the library
+//   so with SDL2Circle_DeclareBasePath (below) — the fallback path a few of
+//   upstream's own callers take when a switch was not given;
+//   SDL_GetPrefPath answers with it too, for the same reason;
 //   and this kernel makes it the working directory before the game starts,
 //   so anything opened by a relative name lands there as well.
 //
@@ -284,6 +284,14 @@ TShutdownMode CKernel::Run(void)
                                     sizeof(DevilutionXArgv) / sizeof(DevilutionXArgv[0]),
                                     s_FinalArgv,
                                     sizeof(s_FinalArgv) / sizeof(s_FinalArgv[0]));
+
+    // Tell the library where this game's files live, once and before
+    // SDL_Init runs inside the engine (Source/main.cpp, renamed
+    // devilutionx_main below): SDL_GetBasePath and SDL_GetPrefPath compose
+    // their answers from this declaration from then on.
+    if (SDL2Circle_DeclareBasePath(RAPI_GAME_DIR) != 0)
+        m_Logger.Write(From, LogWarning,
+                       "SDL2Circle_DeclareBasePath failed: %s", SDL_GetError());
 
     // Move into this game's own directory before the game runs, so every
     // relative path it opens lands there and never in the card's root. One

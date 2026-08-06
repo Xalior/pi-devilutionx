@@ -82,7 +82,7 @@ TARGET = $(OBJDIR)/$(IMAGE)
 # ---------------------------------------------------------------------------
 
 HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
-	circle_stubs.cpp sdl2_surface.cpp sdl2_threads.cpp sdl2_png.cpp
+	circle_stubs.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # ---------------------------------------------------------------------------
@@ -406,27 +406,10 @@ WRAPPED_SYSCALLS = \
 	_fcntl mkdir chdir getcwd dup dup2 \
 	opendir readdir closedir rewinddir
 
-# ---------------------------------------------------------------------------
-# SDL functions the shim owns and this port extends
-# ---------------------------------------------------------------------------
-#
-# circle-libsdl2 implements SDL_CreateRGBSurface and SDL_FreeSurface for
-# 32-bit surfaces and refuses anything else. DevilutionX draws into an 8-bit
-# paletted surface, so this port adds that case — and adding it means
-# intercepting the pair, because a surface with a palette cannot be freed by
-# a function that knows nothing about palettes.
-#
-# --wrap for the same reason as the syscalls above: it leaves the library's
-# implementations in place and reachable as __real_*, so the wrapper in
-# sdl2_surface.cpp handles the paletted case and hands every other one
-# straight back. A plain redefinition would collide with the archive, which
-# is linked whole precisely so that it does.
-WRAPPED_SDL = SDL_CreateRGBSurface SDL_FreeSurface
-
 # The link is driven by the cross ld directly (Circle's Rules.mk sets
 # LD = <prefix>ld for GCC builds), so these are plain linker options, not
 # compiler-driver -Wl, ones.
-LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL))
+LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS))
 
 # ---------------------------------------------------------------------------
 # Compilation

@@ -161,13 +161,17 @@ showing a black screen, but it will not run.
 
 ## How it is put together
 
-Everything this repository writes is in `host/`, and it divides into four
-jobs.
+Everything this repository writes is in `host/`. circle-libsdl2 now carries
+the whole SDL2 surface DevilutionX draws through — paletted surfaces, the
+window and renderer queries, the clipboard, real threads and mutexes, PNG
+decoding — so what remains here is bring-up and the one POSIX gap newlib
+leaves.
 
 **`kernel.cpp` and `kernel.h` — bringing the board up.** A Circle kernel that
 starts the interrupt controller, the timer, the serial port, the SD card and
 the filesystem, declares the display the game will be given (640 by 480, which
-is DevilutionX's own default), then calls the game's entry point. It also
+is DevilutionX's own default), declares where the game's files live
+(`SDL2Circle_DeclareBasePath`), then calls the game's entry point. It also
 decides what each processor core does: core 0 owns every device, core 1 runs
 the game, core 2 scales and presents each finished frame, core 3 is parked.
 Adding `rapi-split=0` to `cmdline.txt` collapses all of that back onto one
@@ -179,15 +183,9 @@ graphics layer's core-crossing file service underneath the C library, using
 the linker's `--wrap`, so that the game's ordinary `fopen` and `fread` reach
 the card safely without one line of the game changing.
 
-**`sdl2_surface.cpp` — the picture.** DevilutionX draws the way Diablo always
-did: into an 8-bit paletted buffer, converted to full colour once a frame.
-circle-libsdl2 works in 32-bit colour only, so the conversion, the palette
-handling, the clipping and the transparency all live here.
-
-**`circle_stubs.cpp`, `sdl2_threads.cpp`, `sdl2_png.cpp` — the rest.** SDL
-functions the graphics layer does not provide: logging, window and renderer
-queries, the clipboard, mutexes. Each either does the job or reports honestly
-that it cannot.
+**`circle_stubs.cpp` — the rest.** One POSIX call newlib declares but does not
+implement: `access()`, answered from `stat()` since this filesystem is FAT
+with no permission bits to ask about.
 
 `host/defaults.cpp` and `host/defaultsblock.h` carry a small block of text at a
 fixed place inside the image (offset 0x800). A tool holding the image before it
@@ -243,11 +241,10 @@ this is the single most valuable thing to test first.
 keyboards and USB gamepads, and DevilutionX has full support for both.
 Untested here.
 
-**PNG images cannot be decoded.** The only PNG assets DevilutionX loads are
-the artwork for its on-screen touch gamepad, which needs a touchscreen to
-appear. `host/sdl2_png.cpp` reports the failure rather than carrying an image
-decoder for pictures nothing can display. If a touchscreen is ever attached,
-that is the file to open.
+**The touch gamepad's artwork has never been seen.** circle-libsdl2 decodes
+PNG now, so the on-screen touch gamepad's images load like any other asset.
+Nothing draws them: that gamepad only appears in `VirtualGamepad` control
+mode, which needs a touchscreen, and this board has none.
 
 **Video sequences are untested.** The Smacker decoder is built and linked, but
 the intro and cut-scene playback has never been run.
