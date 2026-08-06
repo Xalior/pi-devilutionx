@@ -1,0 +1,24 @@
+[submodule "circle-libsdl2"]
+	path = circle-libsdl2
+	url = https://github.com/Xalior/circle-libsdl2.git
+[submodule "devilutionX"]
+	path = devilutionX
+	url = https://github.com/diasurgical/devilutionX.git
+[submodule "deps/fmt"]
+	path = deps/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "deps/libmpq"]
+	path = deps/libmpq
+	url = https://github.com/diasurgical/libmpq.git
+[submodule "deps/libsmackerdec"]
+	path = deps/libsmackerdec
+	url = https://github.com/diasurgical/libsmackerdec.git
+[submodule "deps/simpleini"]
+	path = deps/simpleini
+	url = https://github.com/brofield/simpleini.git
+[submodule "deps/zlib"]
+	path = deps/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "deps/bzip2"]
+	path = deps/bzip2
+	url = https://github.com/libarchive/bzip2.git
