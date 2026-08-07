@@ -194,36 +194,6 @@ static unsigned BuildEpoch(void)
     return (unsigned)(days * 86400L + hh*3600 + mm*60 + ss);
 }
 
-// The second constructor array, placed by devilutionx-defaults.ld. Declared
-// as data and taken by address: these are linker-defined symbols, so their
-// addresses are the array bounds and their contents are meaningless.
-extern "C" void (*__game_init_start)(void);
-extern "C" void (*__game_init_end)(void);
-
-void CKernel::RunGameConstructors(void)
-{
-    void (**pStart)(void) = &__game_init_start;
-    void (**pEnd)(void)   = &__game_init_end;
-    const unsigned nCount = (unsigned) (pEnd - pStart);
-
-    m_Logger.Write(From, LogNotice, "running %u deferred static constructors",
-                   nCount);
-
-    unsigned nIndex = 0;
-    for (void (**pFunc)(void) = pStart; pFunc < pEnd; pFunc++, nIndex++)
-    {
-        // One line per constructor, before the call. A constructor that stops
-        // the board leaves its own line as the last thing on the wire, which
-        // is the only way to name it: there is no unwinding out of a fault
-        // here and no second chance to report.
-        m_Logger.Write(From, LogDebug, "ctor %u/%u at %lx",
-                       nIndex, nCount, (unsigned long) *pFunc);
-        (**pFunc)();
-    }
-
-    m_Logger.Write(From, LogNotice, "deferred static constructors complete");
-}
-
 boolean CKernel::Initialize(void)
 {
     boolean bOK = TRUE;
@@ -244,11 +214,6 @@ boolean CKernel::Initialize(void)
     // arms itself too — before the secondary cores start, and before the
     // first thing that can throw.
     if (bOK) SDL2Circle_ArmCoreRuntime();
-
-    // The game's own static constructors. Everything they might reach — the
-    // clock, the card, stdio, the scheduler — is up by this line, and the
-    // split is not, so this is still plain core-0 code.
-    if (bOK) RunGameConstructors();
 
     // Start the secondary cores last: the world they are about to work in
     // has to be complete first — the card mounted, stdio wired — because
