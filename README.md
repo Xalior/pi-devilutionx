@@ -174,8 +174,6 @@ is DevilutionX's own default), declares where the game's files live
 (`SDL2Circle_DeclareBasePath`), then calls the game's entry point. It also
 decides what each processor core does: core 0 owns every device, core 1 runs
 the game, core 2 scales and presents each finished frame, core 3 is parked.
-Adding `rapi-split=0` to `cmdline.txt` collapses all of that back onto one
-core.
 
 **`circle_syscalls.cpp` — reading and writing files from the wrong core.** The
 game runs on core 1, but only core 0 may touch the SD card. This file puts the
