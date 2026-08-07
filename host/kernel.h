@@ -74,6 +74,12 @@ public:
     TShutdownMode Run(void);
 
 private:
+    // Runs DevilutionX's own static constructors. The linker script keeps
+    // them out of the array Circle's sysinit walks, because that walk happens
+    // before this kernel exists; they run from Initialize() instead, on core
+    // 0, with the console, the timer, the scheduler and the card already up.
+    void RunGameConstructors(void);
+
     // No CScreenDevice: the SDL window owns the display.
     CActLED             m_ActLED;
     CKernelOptions      m_Options;

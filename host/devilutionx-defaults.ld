@@ -56,12 +56,39 @@ SECTIONS
 		*(.rodata*)
 	}
 
+	/* Two arrays, not one.
+	 *
+	 * Circle's sysinit walks __init_start..__init_end before main(), which
+	 * is before this kernel — and therefore before CTimer, CDeviceNameService,
+	 * CScheduler, CLogger and the mounted card — exists. A constructor that
+	 * reads the clock, opens a file or takes a lock reaches a Circle
+	 * singleton whose Get() asserts on a null instance, and assertion_failed
+	 * logs through a CLogger that is not there either: the board stops with
+	 * nothing on the wire at all.
+	 *
+	 * So only the constructors that are safe that early — Circle's own,
+	 * newlib's, libc++'s and the shim's — stay in the array sysinit walks.
+	 * DevilutionX's own objects, and the third-party sources built beside
+	 * them, go into a second array that the kernel walks itself once the
+	 * board is up. Their order relative to each other is unchanged.
+	 *
+	 * Prioritised sections come first and sorted, which is what the default
+	 * GNU ld script does and what init_priority means: libc++'s iostream
+	 * initialiser carries one, and it has to run before anything that could
+	 * use a stream. */
 	.init_array : {
 		__init_start = .;
 
-		KEEP(*(.init_array*))
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP(*(EXCLUDE_FILE(*/dvl/*.o */deps/*.o) .init_array))
 
 		__init_end = .;
+
+		__game_init_start = .;
+
+		KEEP(*(.init_array))
+
+		__game_init_end = .;
 	}
 
 	.ARM.exidx : {
