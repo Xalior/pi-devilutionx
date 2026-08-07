@@ -159,59 +159,6 @@ window's own surface, and this port has no window surface — the graphics layer
 presents from textures only. The game will report the error rather than
 showing a black screen, but it will not run.
 
-## How it is put together
-
-Everything this repository writes is in `host/`. circle-libsdl2 now carries
-the whole SDL2 surface DevilutionX draws through — paletted surfaces, the
-window and renderer queries, the clipboard, real threads and mutexes, PNG
-decoding — so what remains here is bring-up and the one POSIX gap newlib
-leaves.
-
-**`kernel.cpp` and `kernel.h` — bringing the board up.** A Circle kernel that
-starts the interrupt controller, the timer, the serial port, the SD card and
-the filesystem, declares the display the game will be given (640 by 480, which
-is DevilutionX's own default), declares where the game's files live
-(`SDL2Circle_DeclareBasePath`), then calls the game's entry point. It also
-decides what each processor core does: core 0 owns every device, core 1 runs
-the game, core 2 scales and presents each finished frame, core 3 is parked.
-
-**`circle_syscalls.cpp` — reading and writing files from the wrong core.** The
-game runs on core 1, but only core 0 may touch the SD card. This file puts the
-graphics layer's core-crossing file service underneath the C library, using
-the linker's `--wrap`, so that the game's ordinary `fopen` and `fread` reach
-the card safely without one line of the game changing.
-
-**`circle_stubs.cpp` — the rest.** One POSIX call newlib declares but does not
-implement: `access()`, answered from `stat()` since this filesystem is FAT
-with no permission bits to ask about.
-
-`host/defaults.cpp` and `host/defaultsblock.h` carry a small block of text at a
-fixed place inside the image (offset 0x800). A tool holding the image before it
-boots can write a command line into it, and the kernel reads it at start-up and
-appends it to the game's arguments. That is how a setting can be changed for
-one boot without rebuilding anything or rewriting the card. The build refuses
-to produce an image that has lost that block.
-
-### The submodules, and why there are so many
-
-DevilutionX's own build system downloads its dependencies while it configures.
-This build has no network and no CMake, so each dependency is a submodule
-here, pinned at exactly the version DevilutionX asks for:
-
-| Submodule | What it does |
-|---|---|
-| `devilutionX` | The game. Pinned at release 1.5.5 |
-| `circle-libsdl2` | SDL2 over bare metal |
-| `deps/fmt` | Text formatting, used throughout the game |
-| `deps/libmpq` | Reads Diablo's MPQ archives |
-| `deps/libsmackerdec` | Decodes the Smacker video the intro uses |
-| `deps/simpleini` | Reads and writes `diablo.ini` |
-| `deps/zlib`, `deps/bzip2` | Decompressors libmpq requires |
-
-DevilutionX 1.5.5 rather than the development branch, because the development
-branch adds a Lua interpreter and a bidirectional-text library to that list,
-and 1.5.5 is the newest release without them.
-
 ## What is missing, and what is untested
 
 This section is the useful part. It is written to be believed, so it says
