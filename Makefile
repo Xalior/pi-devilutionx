@@ -235,9 +235,17 @@ netboot: rpi5
 CARD_DIR  = build/sd-card
 CARD_GAME = $(CARD_DIR)/games/devilutionx
 
+# The game's own free artwork, fonts and palettes, which live in the source
+# tree rather than in any download: the menu palette alone is what the game
+# opens first, and without it there is nothing on screen from the very first
+# frame. Everything under it is CC-BY, OFL or zlib.
+GAME_ASSETS = devilutionX/Packaging/resources/assets
+
 card: kernels
 	@rm -rf $(CARD_DIR)
 	@mkdir -p $(CARD_GAME)
+	@cp -R $(GAME_ASSETS) $(CARD_GAME)/
+	@echo "  ASSETS $(GAME_ASSETS) -> games/devilutionx/assets"
 	@cp host/build/rpi3/$(IMAGE_rpi3) $(CARD_DIR)/
 	@cp host/build/rpi4/$(IMAGE_rpi4) $(CARD_DIR)/
 	@cp host/build/rpi5/$(IMAGE_rpi5) $(CARD_DIR)/
