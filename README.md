@@ -18,14 +18,29 @@ up the hardware itself, and it calls the game.
 Supported boards: **Raspberry Pi 3, Pi 4 and Pi 5** (and the Compute Modules
 and the Zero 2 W, which share their silicon). Each board gets its own image.
 
-## Status
+![Diablo running on a Raspberry Pi 5 with no operating system](docs/devilutionx-on-bare-metal.jpg)
 
-**The game builds and links completely for all three boards.** That is where
-this port is today.
+*Captured from the Pi 5's HDMI output. The board is running this image and
+nothing else — no kernel underneath it, no window system, no launcher.*
 
-**It has not yet been seen to draw a frame on real hardware.** Nothing below
-that describes what happens on screen has been watched happening on screen. If
-you run it, what you see is new information.
+## What works
+
+Diablo plays: the menus, the town, the dungeon, combat and saving.
+
+- **Picture.** Scaled to your screen.
+- **Mouse and keyboard.** Both, which this game needs — it is played with the
+  mouse from the menus to the fighting.
+- **Game controllers.** USB pads.
+- **Saved games.** Written back to the SD card.
+
+What is missing:
+
+- **Sound.** The game runs silent.
+- **Multiplayer.** Single player only.
+- **The on-screen touch gamepad.** It needs a touchscreen, and there is none.
+
+One oddity worth knowing: a Raspberry Pi has no battery-backed clock, so every
+saved game from the same image carries the same timestamp.
 
 ## What you need
 
@@ -158,56 +173,6 @@ If a `diablo.ini` is present in `games/devilutionx/`, leave **`Upscale`** on
 window's own surface, and this port has no window surface — the graphics layer
 presents from textures only. The game will report the error rather than
 showing a black screen, but it will not run.
-
-## What is missing, and what is untested
-
-This section is the useful part. It is written to be believed, so it says
-plainly which of these are known and which are merely expected.
-
-**There is no sound.** DevilutionX mixes and decodes its audio with a separate
-library, SDL_audiolib, which circle-libsdl2 does not provide. The build is
-therefore configured the way DevilutionX's own authors provide for a platform
-without sound: every sound call becomes a call that does nothing. The game
-runs silent. The graphics layer *does* implement SDL's audio device, so this
-is a matter of building SDL_audiolib on top of it rather than of missing
-hardware.
-
-**There is no multiplayer.** No network stack exists under the board. The
-build is configured for single player, which is DevilutionX's own supported
-configuration for this.
-
-**The mouse is implemented but has never been tried here.** circle-libsdl2
-drives a USB mouse fully — position, buttons, relative motion, and the SDL
-events that go with them. Nothing in this port has exercised it on real
-hardware. DevilutionX is a mouse-driven game from its menus to its combat, so
-this is the single most valuable thing to test first.
-
-**Keyboard and game controllers should work.** circle-libsdl2 drives USB
-keyboards and USB gamepads, and DevilutionX has full support for both.
-Untested here.
-
-**The touch gamepad's artwork has never been seen.** circle-libsdl2 decodes
-PNG now, so the on-screen touch gamepad's images load like any other asset.
-Nothing draws them: that gamepad only appears in `VirtualGamepad` control
-mode, which needs a touchscreen, and this board has none.
-
-**Video sequences are untested.** The Smacker decoder is built and linked, but
-the intro and cut-scene playback has never been run.
-
-**Saved games are stamped with the build time.** The Raspberry Pi has no
-battery-backed clock, so the kernel sets the system clock to the moment the
-image was compiled. Every save from one image therefore carries the same
-timestamp.
-
-## Debts
-
-Things this repository owes, recorded so they are not forgotten:
-
-* `host/dvlext/config.h` states DevilutionX's version number by hand, because
-  upstream's build system normally generates that file. Moving the submodule
-  to a new release means editing it to match.
-* `deps/zlib` is built without its gzip-file layer, which nothing here uses.
-  If anything ever calls `gzopen`, the link will fail and say so.
 
 ## Licences
 
