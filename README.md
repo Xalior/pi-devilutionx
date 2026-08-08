@@ -174,6 +174,14 @@ window's own surface, and this port has no window surface — the graphics layer
 presents from textures only. The game will report the error rather than
 showing a black screen, but it will not run.
 
+### Keyboard layout
+
+The `cmdline.txt` file on the card controls which keyboard layout the system reads. Circle defaults to US, but also supports UK, German, Spanish, French, Italian and Dvorak layouts. To set one, add `keymap=` to `cmdline.txt`:
+
+    keymap=uk
+
+Valid values are: `us` (default), `uk`, `de`, `es`, `fr`, `it`, `dv` (Dvorak). The card built by `make card` does not preset a layout — add the setting if you want one other than the default.
+
 ## Licences
 
 This repository's own code is under the GNU Lesser General Public Licence
