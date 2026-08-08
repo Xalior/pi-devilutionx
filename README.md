@@ -176,11 +176,11 @@ showing a black screen, but it will not run.
 
 ### Keyboard layout
 
-The `cmdline.txt` file on the card controls which keyboard layout the system reads. Circle defaults to US, but also supports UK, German, Spanish, French, Italian and Dvorak layouts. To set one, add `keymap=` to `cmdline.txt`:
+The `cmdline.txt` file on the card controls which keyboard layout the system reads. Circle reads this setting at boot and uses a German layout if the name is missing or not recognised. Valid values are `US`, `UK`, `DE`, `ES`, `FR`, `IT` and `DV` (Dvorak). To set one, add `keymap=` to `cmdline.txt`:
 
-    keymap=uk
+    keymap=UK
 
-Valid values are: `us` (default), `uk`, `de`, `es`, `fr`, `it`, `dv` (Dvorak). The card built by `make card` does not preset a layout — add the setting if you want one other than the default.
+Names are case-sensitive: `uk` in lowercase matches nothing and falls back to German instead. The card built by `make card` does not preset a layout — add the setting if you want one other than the default.
 
 ## Licences
 
