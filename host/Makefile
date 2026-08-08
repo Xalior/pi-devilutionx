@@ -99,6 +99,17 @@ HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
 	circle_stubs.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
+# The SD card's read cache, which lives in circle-libsdl2 rather than here.
+#
+# It is not part of SDL and does not use it: it is Circle device-layer code
+# that wraps the card and is picked up by name, so FatFs and every file the
+# game opens go through it without knowing. It is kept in that repository
+# because that is where the shared pieces are today, and it is compiled
+# straight into this kernel — there is no library to link, and no other port
+# has to agree with this one about how it is built.
+DISKCACHE_DIR = $(SHIM)/circle-diskcache
+DISKCACHE_OBJ = $(OBJDIR)/diskcache.o
+
 # ---------------------------------------------------------------------------
 # Sources: DevilutionX
 # ---------------------------------------------------------------------------
@@ -233,7 +244,7 @@ BZIP2_OBJS = $(addprefix $(OBJDIR)/deps/bzip2/,$(BZIP2_SRCS:.c=.o))
 
 DEP_OBJS = $(FMT_OBJS) $(MPQ_OBJS) $(SMK_OBJS) $(ZLIB_OBJS) $(BZIP2_OBJS)
 
-OBJS = $(HOST_OBJS) $(DVL_OBJS) $(DEP_OBJS)
+OBJS = $(HOST_OBJS) $(DISKCACHE_OBJ) $(DVL_OBJS) $(DEP_OBJS)
 
 # DevilutionX is written to C++20 (its CMakeLists says so, and fmt's
 # compile-time format-string checking is the reason). The host layer is
@@ -317,6 +328,7 @@ DEFINE += -DRAPI_GAME_DIR='"$(RAPI_GAME_DIR)"'
 # 3rdParty/PKWare for the headers vendored in the game's own tree, and one
 # per fetched dependency.
 INCLUDE := -I $(SHIM)/include -I $(SHIM)/include/SDL2 \
+	-I $(DISKCACHE_DIR) \
 	-I $(CURDIR)/dvlext \
 	-I $(DVL)/Source \
 	-I $(DVL)/3rdParty/tl -I $(DVL)/3rdParty/hoehrmann_utf8 \
@@ -441,6 +453,13 @@ LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS))
 # This project's own objects, board-scoped. These more-specific rules win
 # over Rules.mk's in-place %.o/%.d, so nothing is written beside the source.
 $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
+	@echo "  CPP   $@"
+	@$(CPP) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
+
+# The disk cache, which lives outside this directory. Its own rule because
+# the pattern rule above only reaches sources beside this makefile, and its
+# object goes in this board's tree like every other.
+$(DISKCACHE_OBJ): $(DISKCACHE_DIR)/diskcache.cpp | $(OBJDIR)
 	@echo "  CPP   $@"
 	@$(CPP) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
 
