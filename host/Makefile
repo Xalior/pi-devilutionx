@@ -95,8 +95,12 @@ TARGET = $(OBJDIR)/$(IMAGE)
 # Sources: this port's own
 # ---------------------------------------------------------------------------
 
-HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
-	circle_stubs.cpp
+# The kernel wrapper and this port's own start-up: nothing here implements
+# any part of SDL, and nothing here fills in for the C library either. The
+# file syscalls are the shim's circle-syscallwrap component and the POSIX
+# functions this platform does not have are its circle-posix component; both
+# are included below.
+HOST_SRCS = main.cpp kernel.cpp defaults.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # ---------------------------------------------------------------------------
@@ -277,6 +281,40 @@ TARGET := $(OBJDIR)/.circle-unused
 # see that repository's circle-diskcache/README.md for what it does and why
 # this include sits on the line before Rules.mk.
 include $(SHIM)/circle-diskcache/diskcache.mk
+
+# The file syscalls, redirected at link time.
+#
+# DevilutionX reads its MPQ archives, its settings file and its save games
+# through the C library — fopen/fread, opendir/readdir, remove() — and it
+# runs on the application core. newlib's Circle glue drives FatFs and the SD
+# card straight from wherever it is called, which off core 0 is illegal, and
+# the game has no file layer of its own to redirect. This component puts the
+# shim's any-core I/O service underneath the C library instead.
+#
+# It brings its own --wrap flags, emitted from the same symbol list its
+# source implements, so there is no list to keep in step here. The mechanism,
+# and the three things about it that are easy to get wrong, are in
+# circle-libsdl2/docs/CORE-SPLIT.md.
+#
+# NOTHING OF SDL IS WRAPPED, here or there, and nothing of SDL ever should
+# be. A --wrap renames a reference rather than defining a second symbol, so
+# the whole-archive link below — which turns a leftover local copy of a
+# library function into a duplicate-symbol error — cannot see one. A wrapped
+# SDL function is therefore the one kind of private SDL that could sit here
+# for years without anything saying so. Whatever the game needs from SDL, the
+# library provides; where it does not, the library is what gets fixed.
+#
+# On the line before Rules.mk for the same reason the disk cache is.
+include $(SHIM)/circle-syscallwrap/syscallwrap.mk
+
+# The POSIX functions this platform does not have. DevilutionX asks access()
+# whether a file is there and whether it may be written, and newlib here has
+# no access() at all. The component answers it from the filesystem, through
+# the same any-core I/O service the syscalls above use, and answers the rest
+# of the missing operating system beside it. Its README has the answer each
+# function gives and why that answer is the honest one.
+include $(SHIM)/circle-posix/posix.mk
+
 include $(CIRCLEHOME)/Rules.mk
 TARGET := $(SDL_APP_IMAGE)
 
@@ -408,36 +446,6 @@ $(SHIM_LIB):
 	@echo "$@ is missing: the $(RAPI_BOARD) shim archive has not been built."
 	@echo "Run: $(MAKE) -C $(SHIM) libSDL2-$(RAPI_BOARD).a BOARD=$(RAPI_BOARD)"
 	@exit 1
-
-# ---------------------------------------------------------------------------
-# Filesystem syscalls, redirected at link time
-# ---------------------------------------------------------------------------
-#
-# The game runs on the application core, and newlib's Circle glue drives
-# FatFs and the SD card straight from wherever it is called — which off core
-# 0 is illegal. circle_syscalls.cpp puts the shim's any-core I/O service
-# underneath the C library instead; these flags are what put it there.
-#
-# --wrap rather than redefinition, because redefinition cannot work here:
-# the glue defines _open, _read, _write, _close, _lseek, _fstat, opendir,
-# readdir, closedir, dup and more in a SINGLE object file. Redefining part
-# of that set either collides at link time or, worse, leaves the originals
-# linked in beside the replacements with no diagnostic. --wrap renames the
-# references instead and leaves the vendored glue untouched — and it is what
-# keeps __real_* reachable, which is how the service performs the real work
-# once it has reached core 0.
-#
-# Every name here must also appear in circle_syscalls.cpp: a wrap with no
-# __wrap_ definition is an undefined reference, so the link is the check.
-WRAPPED_SYSCALLS = \
-	_open _close _read _write _lseek _fstat _stat lstat _unlink _rename \
-	_fcntl mkdir chdir getcwd dup dup2 \
-	opendir readdir closedir rewinddir
-
-# The link is driven by the cross ld directly (Circle's Rules.mk sets
-# LD = <prefix>ld for GCC builds), so these are plain linker options, not
-# compiler-driver -Wl, ones.
-LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS))
 
 # ---------------------------------------------------------------------------
 # Compilation
